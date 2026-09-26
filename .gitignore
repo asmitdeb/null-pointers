@@ -1,2 +1,10 @@
 dataset/
-.venv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+runs/
+output/
+*.pkl
+*.zip
+.DS_Store
