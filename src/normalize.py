@@ -293,21 +293,21 @@ ADDR_MAP = {
     'lotissement': 'lot', 'domaine': 'dom', 'hameau': 'ham', 'lieu': 'lieu',
     'cedex': 'cdx', 'bp': 'bp',
 }
-DBA_RE = re.compile(r’\b(?:d\s*/\s*b\s*/\s*a|d\.b\.a\.?|dba|doing business as|trading as|t/a|a\.k\.a\.?|aka)\b’, re.I)
-LANDMARK_RE = re.compile(r’\b(?:near|nr|opp|opposite|behind|beside|next to|adjacent to|in front of|close to|’
-                         r’pres de|en face de|a cote de)\b’)
-_ELISION = re.compile(r"\b([ldjmnst]|qu)[‘’]")          # French elision: l’atelier -> l atelier
-_APOS = re.compile(r"[‘’`´]")
-_ALNUM_SPLIT = re.compile(r’(?<=[a-z])(?=\d)|(?<=\d)(?=[a-z])’)   # sector5 -> sector 5
-_NON_ALNUM = re.compile(r’[^a-z0-9]+’)
-_SKEL_SUBS = [(‘ksh’, ‘x’), (‘ch’, ‘c’), (‘sh’, ‘s’), (‘ph’, ‘f’), (‘th’, ‘t’), (‘dh’, ‘d’), (‘bh’, ‘b’),
-              (‘kh’, ‘k’), (‘gh’, ‘g’), (‘jh’, ‘j’), (‘ck’, ‘k’), (‘q’, ‘k’), (‘w’, ‘v’), (‘z’, ‘s’)]
-_POSTAL_56 = re.compile(r’(?<!\d)(\d{5,6})(?!\d)’)
-_POSTAL_33 = re.compile(r’(?<!\d)(\d{3})\s+(\d{3})(?!\d)’)
+DBA_RE = re.compile(r'\b(?:d\s*/\s*b\s*/\s*a|d\.b\.a\.?|dba|doing business as|trading as|t/a|a\.k\.a\.?|aka)\b', re.I)
+LANDMARK_RE = re.compile(r'\b(?:near|nr|opp|opposite|behind|beside|next to|adjacent to|in front of|close to|'
+                         r'pres de|en face de|a cote de)\b')
+_ELISION = re.compile(r"\b([ldjmnst]|qu)['']")          # French elision: l'atelier -> l atelier
+_APOS = re.compile(r"[''`´]")
+_ALNUM_SPLIT = re.compile(r'(?<=[a-z])(?=\d)|(?<=\d)(?=[a-z])')   # sector5 -> sector 5
+_NON_ALNUM = re.compile(r'[^a-z0-9]+')
+_SKEL_SUBS = [('ksh', 'x'), ('ch', 'c'), ('sh', 's'), ('ph', 'f'), ('th', 't'), ('dh', 'd'), ('bh', 'b'),
+              ('kh', 'k'), ('gh', 'g'), ('jh', 'j'), ('ck', 'k'), ('q', 'k'), ('w', 'v'), ('z', 's')]
+_POSTAL_56 = re.compile(r'(?<!\d)(\d{5,6})(?!\d)')
+_POSTAL_33 = re.compile(r'(?<!\d)(\d{3})\s+(\d{3})(?!\d)')
 # URL/domain removal (www.foo.com, foo.com, http://...)
-_URL_RE = re.compile(r’(?:https?://|www\.)\S+|\b\S+\.(?:com|org|net|in|fr|co)\b’, re.I)
+_URL_RE = re.compile(r'(?:https?://|www\.)\S+|\b\S+\.(?:com|org|net|in|fr|co)\b', re.I)
 # Repeated-word collapse (VIDYALAYA VIDYALAYA → VIDYALAYA)
-_WORD_DUP = re.compile(r’\b(\w+)( \1\b)+’, re.I)
+_WORD_DUP = re.compile(r'\b(\w+)( \1\b)+', re.I)
 
 
 def strip_accents(s):
