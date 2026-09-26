@@ -158,7 +158,7 @@ def train(cfg, train_dir, countries, pool, log, run_dir):
     X2 = pd.concat([stage2_features(L, R, P1.iloc[rows_by_l(lcol, lo, hi)].reset_index(drop=True))
                     for lo, hi in batched(len(L), cfg.test_batch_s1)], ignore_index=True)
     FEATS2 = list(X2.columns)
-    oof2, models2 = train_cv(X2, y1, lcol, cfg.stage2_folds, lgb_params(cfg.seed, cfg.n_threads, True), 1000, log,
+    oof2, models2 = train_cv(X2, y1, lcol, cfg.stage2_folds, lgb_params(cfg.seed, cfg.n_threads, True), 2000, log,
                              'stage2')
     thr = choose_filter_threshold(oof2, y1, lcol, cfg.prune_recall, cfg.prune_max_k)
     keep = filter_mask(oof2, lcol, thr, cfg.prune_max_k)
@@ -171,7 +171,7 @@ def train(cfg, train_dir, countries, pool, log, run_dir):
 
     X3 = stage3_features(L, R, P, X2k, p2)
     FEATS3 = list(X3.columns)
-    oof3, models3 = train_cv(X3, y, P['l'].to_numpy(), cfg.folds, lgb_params(cfg.seed, cfg.n_threads), 5000, log,
+    oof3, models3 = train_cv(X3, y, P['l'].to_numpy(), cfg.folds, lgb_params(cfg.seed, cfg.n_threads), 10000, log,
                              'stage3')
     o2o = bool(cfg.one_to_one)
     best, table = tune_decision(P['l'].to_numpy(), P['r'].to_numpy(), oof3, y, n_true, len(L), o2o)

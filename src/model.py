@@ -7,8 +7,14 @@ from sklearn.model_selection import GroupKFold
 
 def lgb_params(seed, n_threads, small=False):
     """LightGBM parameters; `small` is the lighter model used for the stage-2 candidate filter."""
-    return dict(objective='binary', learning_rate=0.1 if small else 0.05, num_leaves=31 if small else 63,
-                min_child_samples=20, feature_fraction=0.8, bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0,
+    if small:
+        return dict(objective='binary', learning_rate=0.08, num_leaves=63,
+                    min_child_samples=15, feature_fraction=0.85, bagging_fraction=0.85, bagging_freq=1,
+                    lambda_l2=0.5, lambda_l1=0.1,
+                    seed=seed, verbose=-1, num_threads=n_threads)
+    return dict(objective='binary', learning_rate=0.03, num_leaves=127,
+                min_child_samples=10, feature_fraction=0.9, bagging_fraction=0.85, bagging_freq=1,
+                lambda_l2=0.3, lambda_l1=0.1, max_depth=8,
                 seed=seed, verbose=-1, num_threads=n_threads)
 
 

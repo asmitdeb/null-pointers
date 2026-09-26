@@ -41,6 +41,62 @@ def tok_overlap_min(a, b):
     return out
 
 
+def trigram_jacc(a, b):
+    """Character trigram Jaccard similarity (handles transliteration noise better than token metrics)."""
+    out = np.empty(len(a), np.float32)
+    for i, (x, y) in enumerate(zip(a, b)):
+        sx = set(x[j:j+3] for j in range(max(0, len(x)-2))) if len(x) >= 3 else set(x)
+        sy = set(y[j:j+3] for j in range(max(0, len(y)-2))) if len(y) >= 3 else set(y)
+        u = len(sx | sy)
+        out[i] = len(sx & sy) / u if u else (1.0 if x == y else 0.0)
+    return out
+
+
+def _soundex(s):
+    """Simple Soundex for a single token."""
+    if not s:
+        return ''
+    s = s.upper()
+    table = str.maketrans('BFPVCGJKQSXZDTLMNR', '111122222222334556')
+    keep = s[0]
+    coded = keep + s[1:].translate(table).replace('0', '')
+    # collapse consecutive identical digits
+    prev, out = '', keep
+    for c in coded[1:]:
+        if c != prev and c != keep:
+            out += c
+            if len(out) == 4:
+                break
+        prev = c
+    return out.ljust(4, '0')[:4]
+
+
+def soundex_match(a, b):
+    """1.0 if first tokens share Soundex code, 0.5 if partial overlap, 0.0 otherwise."""
+    out = np.empty(len(a), np.float32)
+    for i, (x, y) in enumerate(zip(a, b)):
+        xt = x.split()
+        yt = y.split()
+        if not xt or not yt:
+            out[i] = np.nan
+            continue
+        sx = {_soundex(t) for t in xt if len(t) > 1}
+        sy = {_soundex(t) for t in yt if len(t) > 1}
+        u = len(sx | sy)
+        out[i] = len(sx & sy) / u if u else 0.0
+    return out
+
+
+def name_len_ratio(a, b):
+    """min(len(a),len(b)) / max(len(a),len(b)) on compact (no-space) name. Flags length mismatches."""
+    out = np.empty(len(a), np.float32)
+    for i, (x, y) in enumerate(zip(a, b)):
+        cx, cy = x.replace(' ', ''), y.replace(' ', '')
+        mn, mx = min(len(cx), len(cy)), max(len(cx), len(cy))
+        out[i] = mn / mx if mx else 1.0
+    return out
+
+
 def postal_state(p1, p2):
     """0 both missing, 1 one missing, 2 equal, 3 one edit apart (typo), 4 different."""
     out = np.empty(len(p1), np.float32)
@@ -100,7 +156,7 @@ def stage2_features(L, R, P):
     return pd.DataFrame(X)
 
 
-STAGE3_GROUP = ['p2', 'cos_n', 'cos_a', 'n_tset', 'a_tset', 'hscore']
+STAGE3_GROUP = ['p2', 'cos_n', 'cos_a', 'n_tset', 'a_tset', 'hscore', 'n_trigram_jacc', 'n_alias_tset']
 
 
 def stage3_features(L, R, P, X2, p2):
@@ -111,7 +167,8 @@ def stage3_features(L, R, P, X2, p2):
     X.update(_pairwise(L, R, l, r))
     X['p2'] = np.asarray(p2, np.float32)
     with np.errstate(all='ignore'):
-        X['hscore'] = np.nanmean(np.vstack([X['cos_n'], X['cos_a'], X['n_tset'] / 100, X['a_tset'] / 100]),
+        X['hscore'] = np.nanmean(np.vstack([X['cos_n'], X['cos_a'], X['n_tset'] / 100, X['a_tset'] / 100,
+                                            X['n_trigram_jacc'], X['n_alias_tset'] / 100]),
                                  axis=0).astype(np.float32)
     X.update(group_features(l, X, STAGE3_GROUP))
     return pd.DataFrame(X)
@@ -139,6 +196,12 @@ def _pairwise(L, R, l, r):
     X['n_first_eq'] = np.fromiter((x.split()[:1] == y.split()[:1] for x, y in zip(a, b)), np.float32, n)
     X['n_len_diff'] = np.fromiter((abs(len(x) - len(y)) for x, y in zip(ca, cb)), np.float32, n)
     X['n_skel_ratio'] = S(fuzz.ratio, L.col('n_skel', l), R.col('n_skel', r))
+    X['n_trigram_jacc'] = trigram_jacc(a, b)
+    X['n_soundex'] = soundex_match(a, b)
+    X['n_len_ratio'] = name_len_ratio(a, b)
+    # skel trigram for cross-script robustness
+    sk_l, sk_r = L.col('n_skel', l), R.col('n_skel', r)
+    X['n_skel_trigram'] = trigram_jacc(sk_l, sk_r)
     xa = [x or y for x, y in zip(L.col('n_alt', l), a)]            # DBA / trade-name aliases
     xb = [x or y for x, y in zip(R.col('n_alt', r), b)]
     X['n_alias_tset'] = np.maximum.reduce([X['n_tset'], S(fuzz.token_set_ratio, xa, b),
@@ -157,6 +220,8 @@ def _pairwise(L, R, l, r):
     X['a_partial'] = S(fuzz.partial_ratio, a1, a2)
     X['a_jacc'] = tok_jaccard(a1, a2)
     X['a_overlap_min'] = tok_overlap_min(a1, a2)
+    X['a_trigram_jacc'] = trigram_jacc(a1, a2)
+    X['a_jw'] = S(JaroWinkler.normalized_similarity, a1, a2)
     p1, p2 = L.col('postal', l), R.col('postal', r)
     X['postal_pref3'] = np.fromiter(((x[:3] == y[:3]) if (x and y) else np.nan for x, y in zip(p1, p2)), np.float32, n)
     u1, u2 = L.col('nums', l), R.col('nums', r)

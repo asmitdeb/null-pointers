@@ -21,20 +21,20 @@ class Config:
     read_chunk: int = 100000    # rows per normalisation chunk
 
     # ---- stage 1: hashed, frequency-capped inverted index --------------------------------
-    k_name: int = 15            # top-K per Source-1 record from the name-key view
-    k_addr: int = 10            # top-K from the address-key view
+    k_name: int = 20            # top-K per Source-1 record from the name-key view
+    k_addr: int = 15            # top-K from the address-key view
     max_df_frac: float = 0.0001 # keys carried by more than this share of Source-2/3 records are not indexed ...
     max_df_min: int = 50        # ... but the cap is never below this many records
-    max_df_max: int = 300       # ... and never above this many (bounds time and memory per query)
+    max_df_max: int = 500       # ... and never above this many (bounds time and memory per query)
     chunk_rows: int = 2000      # Source-1 rows per sparse-product chunk
 
     # ---- stage 2: learned candidate filter (produces candidate_pairs.tsv) -----------------
-    prune_recall: float = 0.995  # keep this share of the true pairs that stage 1 found
-    prune_max_k: int = 10        # never more than this many candidates per Source-1 record
+    prune_recall: float = 0.998  # keep this share of the true pairs that stage 1 found
+    prune_max_k: int = 15        # never more than this many candidates per Source-1 record
     stage2_folds: int = 3
 
     # ---- stage 3: matcher -----------------------------------------------------------------
     folds: int = 5
-    max_train_s1: int = 60000    # Source-1 entities sampled for training (all Source 2/3 records are kept)
+    max_train_s1: int = 100000   # Source-1 entities sampled for training (all Source 2/3 records are kept)
     test_batch_s1: int = 50000   # Source-1 rows per test batch (lower if RAM is short)
     one_to_one: int = 1          # 1 = each Source-2/3 record goes to at most one Source-1 entity (S1 is deduplicated)
