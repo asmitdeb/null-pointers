@@ -35,6 +35,9 @@ class Config:
 
     # ---- stage 3: matcher -----------------------------------------------------------------
     folds: int = 5
+    n_seeds: int = 3             # number of LightGBM seeds to ensemble for stage 3
+    use_catboost: int = 1        # 1 = train CatBoost and ensemble with LightGBM
     max_train_s1: int = 100000   # Source-1 entities sampled for training (all Source 2/3 records are kept)
     test_batch_s1: int = 50000   # Source-1 rows per test batch (lower if RAM is short)
     one_to_one: int = 1          # 1 = each Source-2/3 record goes to at most one Source-1 entity (S1 is deduplicated)
+    country_filter: int = 1      # 1 = drop cross-country stage-1 candidates (true pairs share country ~100%)

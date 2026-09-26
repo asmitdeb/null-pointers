@@ -27,7 +27,8 @@ from data_io import read_tsv, parse_ids, write_outputs, check_outputs, run_offic
 from records import Records, CountryCodes, load_source, make_pool                      # noqa: E402
 from blocking import CandidateIndex                                                    # noqa: E402
 from features import stage2_features, stage3_features                                 # noqa: E402
-from model import (lgb_params, train_cv, predict_avg, choose_filter_threshold,         # noqa: E402
+from model import (lgb_params, train_cv, train_cv_catboost, predict_avg, predict_catboost,  # noqa: E402
+                   ensemble_predict, choose_filter_threshold,
                    filter_mask, macro_f05, decision_inputs, apply_rule, tune_decision)
 
 
@@ -146,6 +147,11 @@ def train(cfg, train_dir, countries, pool, log, run_dir):
         f'{np.mean(n_true == 0):.1%} | true pairs with the same country label {same_c:.4f}')
 
     P1 = index.query(np.arange(len(L)), cfg)
+    # Country filter: true pairs share country ~100%; dropping cross-country pairs improves precision
+    if cfg.country_filter:
+        lc = L.num['country'][P1['l'].to_numpy()]
+        rc = R.num['country'][P1['r'].to_numpy()]
+        P1 = P1[lc == rc].reset_index(drop=True)
     y1 = np.isin(P1['l'].to_numpy() * nR + P1['r'].to_numpy(), true_keys)
     n_pos = max(int(n_true.sum()), 1)
     st = {'train_stage1_per_s1': len(P1) / len(L), 'train_stage1_recall': y1.sum() / n_pos,
@@ -171,26 +177,46 @@ def train(cfg, train_dir, countries, pool, log, run_dir):
 
     X3 = stage3_features(L, R, P, X2k, p2)
     FEATS3 = list(X3.columns)
-    oof3, models3 = train_cv(X3, y, P['l'].to_numpy(), cfg.folds, lgb_params(cfg.seed, cfg.n_threads), 10000, log,
-                             'stage3')
+    l_arr = P['l'].to_numpy()
+
+    # Multi-seed LightGBM ensemble for stage 3
+    n_seeds = max(1, cfg.n_seeds)
+    all_oof3, all_lgb3 = [], []
+    for s in range(n_seeds):
+        seed = cfg.seed + s
+        oof_s, mods_s = train_cv(X3, y, l_arr, cfg.folds, lgb_params(seed, cfg.n_threads), 10000, log,
+                                 f'stage3_lgb_seed{seed}')
+        all_oof3.append(oof_s)
+        all_lgb3.extend(mods_s)
+
+    # CatBoost ensemble for stage 3
+    models3_cb = []
+    if cfg.use_catboost:
+        oof_cb, models3_cb = train_cv_catboost(X3, y, l_arr, cfg.folds, cfg.seed, cfg.n_threads, log, 'stage3')
+        if models3_cb:
+            all_oof3.append(oof_cb)
+
+    oof3 = np.mean(all_oof3, axis=0).astype(np.float32)
     o2o = bool(cfg.one_to_one)
-    best, table = tune_decision(P['l'].to_numpy(), P['r'].to_numpy(), oof3, y, n_true, len(L), o2o)
-    lmax, rbest = decision_inputs(P['l'].to_numpy(), P['r'].to_numpy(), oof3)
+    best, table = tune_decision(l_arr, P['r'].to_numpy(), oof3, y, n_true, len(L), o2o)
+    lmax, rbest = decision_inputs(l_arr, P['r'].to_numpy(), oof3)
     mask = apply_rule(oof3, lmax, rbest, best['t'], best['ratio'], o2o)
-    f_oof, F = macro_f05(P['l'].to_numpy(), y, mask, n_true, len(L))
-    f_ceil, _ = macro_f05(P['l'].to_numpy(), y, y.copy(), n_true, len(L))
-    f_none, _ = macro_f05(P['l'].to_numpy(), y, np.zeros_like(y), n_true, len(L))
+    f_oof, F = macro_f05(l_arr, y, mask, n_true, len(L))
+    f_ceil, _ = macro_f05(l_arr, y, y.copy(), n_true, len(L))
+    f_none, _ = macro_f05(l_arr, y, np.zeros_like(y), n_true, len(L))
     cn = countries.names
     log(f'VALIDATION (out-of-fold) macro F0.5 = {f_oof:.4f}  [threshold {best["t"]}, ratio {best["ratio"]}, '
         f'one-to-one {o2o}] | ceiling with these candidates {f_ceil:.4f} | predict-nothing {f_none:.4f}')
     log(f'  singletons {F[n_true == 0].mean():.4f} | entities with matches {F[n_true > 0].mean():.4f} | per country: '
         + ', '.join(f'{cn[c]}={F[L.num["country"] == c].mean():.4f}' for c in np.unique(L.num['country'])))
-    imp = pd.Series(np.mean([m.feature_importance('gain') for m in models3], axis=0), index=FEATS3)
+    imp = pd.Series(np.mean([m.feature_importance('gain') for m in all_lgb3], axis=0), index=FEATS3)
     top = list(imp.sort_values(ascending=False).head(15).index)
     log('top features: ' + ', '.join(top))
     st.update({'validation_macro_f05': f_oof, 'ceiling_f05': f_ceil, 'predict_nothing_f05': f_none})
-    bundle = {'stage2': models2, 'stage3': models3, 'filter_threshold': thr, 'decision': best, 'one_to_one': o2o,
-              'features2': FEATS2, 'features3': FEATS3, 'stats': st, 'top_features': top, 'config': dataclasses.asdict(cfg)}
+    bundle = {'stage2': models2, 'stage3': all_lgb3, 'stage3_catboost': models3_cb,
+              'filter_threshold': thr, 'decision': best, 'one_to_one': o2o,
+              'features2': FEATS2, 'features3': FEATS3, 'stats': st, 'top_features': top,
+              'config': dataclasses.asdict(cfg)}
     with open(os.path.join(run_dir, 'models.pkl'), 'wb') as f:
         pickle.dump(bundle, f)
     log(f'models saved -> {os.path.join(run_dir, "models.pkl")} (reuse with --models if the test phase fails)')
@@ -208,6 +234,10 @@ def predict_test(cfg, test_dir, countries, pool, log, bundle):
     Ps, X2s, p2s, n1 = [], [], [], 0
     for lo, hi in batched(len(L), cfg.test_batch_s1):
         P1 = index.query(np.arange(lo, hi), cfg)
+        if cfg.country_filter and len(P1):
+            lc = L.num['country'][P1['l'].to_numpy()]
+            rc = R.num['country'][P1['r'].to_numpy()]
+            P1 = P1[lc == rc].reset_index(drop=True)
         n1 += len(P1)
         if len(P1):
             X2 = stage2_features(L, R, P1)[FEATS2]
@@ -226,7 +256,7 @@ def predict_test(cfg, test_dir, countries, pool, log, bundle):
         sl = rows_by_l(lcol, lo, hi)
         if sl.stop > sl.start:
             X3 = stage3_features(L, R, P.iloc[sl].reset_index(drop=True), X2.iloc[sl], p2[sl])[FEATS3]
-            p3[sl] = predict_avg(bundle['stage3'], X3)
+            p3[sl] = ensemble_predict(bundle, X3)
     best = bundle['decision']
     lmax, rbest = decision_inputs(lcol, P['r'].to_numpy(), p3)
     mask = apply_rule(p3, lmax, rbest, best['t'], best['ratio'], bundle['one_to_one'])

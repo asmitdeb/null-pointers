@@ -280,6 +280,18 @@ ADDR_MAP = {
     'ext': 'extn', 'district': 'dist', 'dt': 'dist', 'village': 'vill', 'vlg': 'vill', 'number': 'no', 'num': 'no',
     'chemin': 'ch', 'allee': 'all', 'impasse': 'imp', 'route': 'rte', 'faubourg': 'fbg', 'quai': 'qu',
     'cours': 'crs', 'cross': 'crs', 'main': 'mn', 'ground': 'gnd', 'post': 'po',
+    # US-specific
+    'po': 'po', 'box': 'box', 'unit': 'unit', 'apt': 'apt', 'ste': 'ste', 'fl': 'fl',
+    'freeway': 'fwy', 'blvd': 'blvd', 'ave': 'ave', 'dr': 'dr', 'ln': 'ln', 'ct': 'ct',
+    # India-specific
+    'plot': 'plt', 'khasra': 'khs', 'survey': 'srv', 'phase': 'ph', 'block': 'blk',
+    'flat': 'flat', 'floor': 'fl', 'house': 'hno', 'door': 'dno', 'ward': 'ward',
+    'taluka': 'tal', 'tehsil': 'teh', 'mandal': 'mdl', 'panchayat': 'pncht',
+    'mohalla': 'mhl', 'gali': 'gali', 'chowk': 'cwk', 'marg': 'mrg',
+    # France-specific
+    'rue': 'rue', 'impasse': 'imp', 'residence': 'res', 'batiment': 'bat', 'bat': 'bat',
+    'lotissement': 'lot', 'domaine': 'dom', 'hameau': 'ham', 'lieu': 'lieu',
+    'cedex': 'cdx', 'bp': 'bp',
 }
 DBA_RE = re.compile(r’\b(?:d\s*/\s*b\s*/\s*a|d\.b\.a\.?|dba|doing business as|trading as|t/a|a\.k\.a\.?|aka)\b’, re.I)
 LANDMARK_RE = re.compile(r’\b(?:near|nr|opp|opposite|behind|beside|next to|adjacent to|in front of|close to|’

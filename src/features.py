@@ -194,6 +194,8 @@ def _pairwise(L, R, l, r):
     X['n_acronym'] = np.fromiter(((x != '' and x == yc) or (y != '' and y == xc)
                                   for x, y, xc, yc in zip(acr_a, acr_b, ca, cb)), np.float32, n)
     X['n_first_eq'] = np.fromiter((x.split()[:1] == y.split()[:1] for x, y in zip(a, b)), np.float32, n)
+    X['n_last_eq'] = np.fromiter((x.split()[-1:] == y.split()[-1:] for x, y in zip(a, b)), np.float32, n)
+    X['n_exact'] = np.fromiter((float(x == y) for x, y in zip(a, b)), np.float32, n)
     X['n_len_diff'] = np.fromiter((abs(len(x) - len(y)) for x, y in zip(ca, cb)), np.float32, n)
     X['n_skel_ratio'] = S(fuzz.ratio, L.col('n_skel', l), R.col('n_skel', r))
     X['n_trigram_jacc'] = trigram_jacc(a, b)
@@ -234,6 +236,10 @@ def _pairwise(L, R, l, r):
     X['a_ntok_r'] = R.num['a_ntok'][r].astype(np.float32)
     X['landmark_l'] = L.num['landmark'][l].astype(np.float32)
     X['landmark_r'] = R.num['landmark'][r].astype(np.float32)
+    X['a_exact'] = np.fromiter((float(x == y) for x, y in zip(a1, a2)), np.float32, n)
+    # country code: encode same/diff as integer for tree splits
+    X['country_l'] = L.num['country'][l].astype(np.float32)
+    X['country_r'] = R.num['country'][r].astype(np.float32)
 
     n_empty = (L.num['n_ntok'][l] == 0) | (R.num['n_ntok'][r] == 0)
     a_empty = (L.num['a_ntok'][l] == 0) | (R.num['a_ntok'][r] == 0)

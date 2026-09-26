@@ -4,6 +4,12 @@ import pandas as pd
 import lightgbm as lgb
 from sklearn.model_selection import GroupKFold
 
+try:
+    from catboost import CatBoostClassifier
+    _HAS_CATBOOST = True
+except ImportError:
+    _HAS_CATBOOST = False
+
 
 def lgb_params(seed, n_threads, small=False):
     """LightGBM parameters; `small` is the lighter model used for the stage-2 candidate filter."""
@@ -16,6 +22,12 @@ def lgb_params(seed, n_threads, small=False):
                 min_child_samples=10, feature_fraction=0.9, bagging_fraction=0.85, bagging_freq=1,
                 lambda_l2=0.3, lambda_l1=0.1, max_depth=8,
                 seed=seed, verbose=-1, num_threads=n_threads)
+
+
+def catboost_params(seed, n_threads):
+    return dict(iterations=5000, learning_rate=0.03, depth=8, l2_leaf_reg=3,
+                random_seed=seed, verbose=0, eval_metric='Logloss',
+                early_stopping_rounds=150, thread_count=n_threads if n_threads > 0 else -1)
 
 
 def train_cv(X, y, groups, n_folds, params, rounds, log, name):
@@ -39,9 +51,46 @@ def train_cv(X, y, groups, n_folds, params, rounds, log, name):
     return oof, models
 
 
+def train_cv_catboost(X, y, groups, n_folds, seed, n_threads, log, name):
+    """CatBoost GroupKFold CV. Returns OOF probabilities and fold models. No-op if catboost not installed."""
+    if not _HAS_CATBOOST:
+        log(f'  {name}: catboost not installed, skipping')
+        return np.zeros(len(X), np.float32), []
+    oof = np.zeros(len(X), np.float32)
+    models = []
+    y_int = y.astype(np.int32)
+    params = catboost_params(seed, n_threads)
+    for fold, (a, b) in enumerate(GroupKFold(n_splits=n_folds).split(X, y_int, groups)):
+        m = CatBoostClassifier(**params)
+        m.fit(X.iloc[a], y_int[a], eval_set=(X.iloc[b], y_int[b]), verbose=False)
+        oof[b] = m.predict_proba(X.iloc[b])[:, 1].astype(np.float32)
+        models.append(m)
+        pos, neg = oof[b][y_int[b] == 1], oof[b][y_int[b] == 0]
+        log(f'  {name} catboost fold {fold}: {m.best_iteration_} trees | mean p true pairs '
+            f'{pos.mean() if len(pos) else float("nan"):.3f} | non-matches {neg.mean() if len(neg) else float("nan"):.4f}')
+    return oof, models
+
+
 def predict_avg(models, X):
-    """Mean probability of the fold models."""
+    """Mean probability of the LightGBM fold models."""
     return np.mean([m.predict(X, num_iteration=m.best_iteration) for m in models], axis=0).astype(np.float32)
+
+
+def predict_catboost(models, X):
+    """Mean probability of the CatBoost fold models."""
+    if not models:
+        return np.zeros(len(X), np.float32)
+    return np.mean([m.predict_proba(X)[:, 1] for m in models], axis=0).astype(np.float32)
+
+
+def ensemble_predict(bundle, X):
+    """Weighted average of LightGBM multi-seed ensemble and CatBoost (50/50 when both present)."""
+    p_lgb = predict_avg(bundle['stage3'], X)
+    cb_models = bundle.get('stage3_catboost', [])
+    if cb_models:
+        p_cb = predict_catboost(cb_models, X)
+        return (0.5 * p_lgb + 0.5 * p_cb).astype(np.float32)
+    return p_lgb
 
 
 def rank_within(l, p):
@@ -98,11 +147,12 @@ def apply_rule(p, lmax, rbest, t, ratio, o2o):
 
 
 def tune_decision(l, r, p, lab, n_true, n_left, o2o):
-    """Grid-search (threshold, ratio) on out-of-fold scores for the best macro F0.5 (one-to-one fixed)."""
+    """Grid-search (threshold, ratio) on out-of-fold scores for the best macro F0.5.
+    Fine-grained grid (0.005 step) with wider ratio range for better F0.5 precision optimisation."""
     lmax, rbest = decision_inputs(l, r, p)
     res = []
-    for ratio in (0.0, 0.5, 0.7, 0.8, 0.9, 1.0):
-        for t in np.round(np.arange(0.05, 0.96, 0.01), 2):
+    for ratio in (0.0, 0.3, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0):
+        for t in np.round(np.arange(0.05, 0.99, 0.005), 3):
             f, _ = macro_f05(l, lab, apply_rule(p, lmax, rbest, t, ratio, o2o), n_true, n_left)
             res.append((f, float(t), ratio, o2o))
     res = pd.DataFrame(res, columns=['f05', 't', 'ratio', 'o2o']).sort_values('f05', ascending=False)
