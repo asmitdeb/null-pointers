@@ -1,0 +1,9 @@
+# Python 3.10+
+# After your final run, replace these ranges with the exact versions in runs/<run_id>/environment.txt
+numpy>=1.23
+pandas>=1.5
+scipy>=1.9
+scikit-learn>=1.2
+rapidfuzz>=3.6,<4
+lightgbm>=4.0,<5
+psutil>=5.9
